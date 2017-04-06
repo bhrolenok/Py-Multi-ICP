@@ -3,6 +3,13 @@ import numpy, scipy.optimize
 import pyqtgraph
 import skvideo.io
 import skimage.io, skimage.draw
+import pyflann
+
+DEBUG_VERBOSE=True
+
+def vprint(thing):
+	if(DEBUG_VERBOSE):
+		print thing
 
 def make_tform_mat(tform):
 	return numpy.matrix([[numpy.cos(tform[2]), -numpy.sin(tform[2]), tform[0]],\
@@ -20,14 +27,25 @@ def tform_error(tform,src,dst):
 	tformed_src = tform_mat.dot(augmented_src.T).T[:,:-1]
 	return numpy.linalg.norm(tformed_src-dst,axis=1).sum()
 
-def est_tform(detection_pts,model_pts):
-	shifted_model_pts = model_pts+detection_pts[0]-model_pts[0]
-	closest_detection_idx,residuals = pyflann.FLANN().nn(detection_pts.astype('float'),shifted_model_pts.astype('float'))
-	closest_detection_pts = detection_pts[closest_detection_idx]
-	opt_res = scipy.optimize.minimize(fun=tform_error,\
-		                              x0=numpy.array([0,0,0]),\
-		                              args=(model_pts,closest_detection_pts))
-	return opt_res
+def est_tform(detection_pts,model_pts,max_iters=100):
+	aligned_model_pts = model_pts+detection_pts[0]-model_pts[0]
+	nn_structure = pyflann.FLANN()
+	nn_structure.build_index(detection_pts.astype('float'))
+	closest_detection_idx,residuals = nn_structure.nn_index(aligned_model_pts.astype('float'))
+	last_idx = None
+	itr_ctr = 0
+	last_tform = None
+	while (itr_ctr<max_iters) and not(numpy.array_equal(closest_detection_idx,last_idx)):
+		itr_ctr = itr_ctr+1
+		last_idx = closest_detection_idx
+		closest_detection_pts = detection_pts[closest_detection_idx]
+		opt_res = scipy.optimize.minimize(fun=tform_error,\
+		                                  x0=numpy.array([0,0,0]),\
+		                                  args=(model_pts,closest_detection_pts))
+		last_tform = opt_res.x
+		aligned_model_pts = tform_pts(model_pts,last_tform)
+		closest_detection_idx,residuals = nn_structure.nn_index(aligned_model_pts.astype('float'))
+	return last_tform,closest_detection_idx
 
 def mask_to_pts(mask):
 	row_idxs, col_idxs = numpy.mgrid[0:mask.shape[0],0:mask.shape[1]]
@@ -43,8 +61,7 @@ def bbox_detect(model,frame,bg_img,copy_frame=True):
 		bg_subbed = bg_subbed.sum(axis=-1)
 	bg_mask = bg_subbed>(bg_subbed.max()/2.0)
 	detection_pts = mask_to_pts(bg_mask)
-	opt_res = est_tform(detection_pts,model_pts)
-	tform = opt_res.x
+	tform,covered_pts_idx = est_tform(detection_pts,model_pts)
 	bbox_pts = numpy.array([[0,0],[0,model.shape[1]], [model.shape[0],model.shape[1]], [model.shape[0],0]])
 	tformed_bbox_pts = tform_pts(bbox_pts,tform).round().astype('int')
 	rr,cc = skimage.draw.polygon_perimeter(tformed_bbox_pts[:,0].flatten(),tformed_bbox_pts[:,1].flatten(),shape=frame.shape,clip=True)
