@@ -1,11 +1,9 @@
 # micp.py
 import numpy, scipy.optimize
-import pyqtgraph
 import skvideo.io
 import skimage.io, skimage.draw, skimage.transform
 import pyflann
 import time
-import sys
 
 DEBUG_VERBOSE=True
 
@@ -59,9 +57,9 @@ def mask_to_pts(mask):
 	row_idxs, col_idxs = numpy.mgrid[0:mask.shape[0],0:mask.shape[1]]
 	return numpy.array(zip(row_idxs[mask],col_idxs[mask]))
 
-def detect_new_tracks(model_pts,frame_pts,max_detections=50,cover_radius=10,cover_threshold=0.1):
+def detect_new_tracks(model_pts,frame_pts,next_track_id,max_detections=50,cover_radius=10,cover_threshold=0.1):
 	multi_ctr = 0
-	tform_list = list()
+	tform_dict = dict()
 	while multi_ctr<max_detections and len(frame_pts) > cover_threshold*len(model_pts):
 		multi_ctr = multi_ctr+1
 		tform,nn_structure,aligned_model_pts = est_tform(frame_pts,model_pts)
@@ -75,14 +73,15 @@ def detect_new_tracks(model_pts,frame_pts,max_detections=50,cover_radius=10,cove
 		# num_covered = len(uncovered)-numpy.count_nonzero(uncovered)
 		# print num_covered, cover_threshold*len(model_pts), num_covered/float(len(model_pts)),cover_threshold
 		if len(uncovered)-numpy.count_nonzero(uncovered) > cover_threshold*len(model_pts):
-			tform_list.append(tform)
-			vprint("New track #{}".format(multi_ctr+1))
-	return tform_list
+			tform_dict[next_track_id] = tform #tform_dict.append(tform)
+			vprint("New track #{}".format(next_track_id))
+			next_track_id = next_track_id+1
+	return tform_dict
 
 def track_next_frame(model_pts,frame_pts,prev_det_tforms,cover_radius=10,cover_threshold=0.01):
-	tform_list = list()
-	for tform_idx in range(len(prev_det_tforms)):
-		tform = prev_det_tforms[tform_idx]
+	tform_dict = dict()
+	for tform_id in prev_det_tforms:
+		tform = prev_det_tforms[tform_id]
 		new_tform,nn_structure,aligned_model_pts = est_tform(frame_pts,model_pts,initial_tform=tform)
 		uncovered = numpy.ones(len(frame_pts))
 		for tmp_pt in numpy.array(aligned_model_pts):
@@ -90,10 +89,10 @@ def track_next_frame(model_pts,frame_pts,prev_det_tforms,cover_radius=10,cover_t
 			uncovered[covered_idx] = 0
 		frame_pts = frame_pts[uncovered.astype('bool')]
 		if len(uncovered)-numpy.count_nonzero(uncovered) > cover_threshold*len(model_pts):
-			tform_list.append(new_tform)
+			tform_dict[tform_id] = new_tform #tform_dict.append(new_tform)
 		else:
-			vprint("Lost track #{}".format(tform_idx))
-	return tform_list, frame_pts
+			vprint("Lost track #{}".format(tform_id))
+	return tform_dict, frame_pts
 
 def gen_bgsub_pixel_detector(vd,bg_threshold=0.5):
 	bg_image = numpy.median(vd,axis=0)
@@ -111,52 +110,39 @@ def track_video(model,vd,foreground_detector):
 	tracks = list()
 	last_frame_tracks = None
 	frame_ctr = 0
+	next_track_id = 0
 	for frame in vd:
 		tbefore = time.time()
 		frame_ctr = frame_ctr+1
 		vprint("Frame #{}".format(frame_ctr))
-		this_frame_tracks = list()
+		this_frame_tracks = dict()
 		frame_pts = foreground_detector(frame)
 		if not(last_frame_tracks is None):
 			this_frame_tracks, frame_pts = track_next_frame(model_pts,frame_pts,last_frame_tracks)
-		this_frame_tracks += detect_new_tracks(model_pts,frame_pts)
+			next_track_id = max(next_track_id,max(this_frame_tracks)+1)
+		new_tracks = detect_new_tracks(model_pts,frame_pts,next_track_id)
+		for key in new_tracks:
+			if key in this_frame_tracks:
+				vprint("Track ID overlap, probably an error!")
+				vprint("new_tracks: {}".format(new_tracks))
+				vprint("this_frame_tracks: {}".format(this_frame_tracks))
+				assert(not(key in this_frame_tracks))
+		this_frame_tracks.update(new_tracks) # this_frame_tracks += detect_new_tracks(model_pts,frame_pts)
 		tracks.append(this_frame_tracks)
 		last_frame_tracks = this_frame_tracks
 		tafter = time.time()
 		vprint("{} tracks at {} fps".format(len(this_frame_tracks),1.0/(tafter-tbefore)))
 	return tracks
 
-def bbox_from_tracks(model,vd,tracks,copy_frame=True):
+def bbox_from_tracks(bbox_vtx,vd,tracks,copy_frame=True):
 	if copy_frame:
 		vd = vd.copy()
-	bbox_pts = numpy.array([[0,0],[0,model.shape[1]],[model.shape[0],model.shape[1]],[model.shape[0],0]])
 	for f_idx in range(len(vd)):
 		frame = vd[f_idx]
 		f_tracks = tracks[f_idx]
-		for tform in f_tracks:
-			tformed_bbox_pts = tform_pts(bbox_pts,tform).round().astype('int')
-			rr,cc = skimage.draw.polygon_perimeter(tformed_bbox_pts[:,0].flatten(),tformed_bbox_pts[:,1].flatten(),shape=frame.shape,clip=True)
+		for tform_id in f_tracks:
+			tform = f_tracks[tform_id]
+			tformed_bbox_vtx = tform_pts(bbox_vtx,tform).round().astype('int')
+			rr,cc = skimage.draw.polygon_perimeter(tformed_bbox_vtx[:,0].flatten(),tformed_bbox_vtx[:,1].flatten(),shape=frame.shape,clip=True)
 			frame[rr,cc,:]=[255,0,0]
 	return vd
-
-def main(vd_fname,model_fname,out_fname):
-	vprint("Loading model '{}'".format(model_fname))
-	model_img = skimage.io.imread(model_fname)
-	vprint("Loading video '{}'".format(vd_fname))
-	vd = skvideo.io.vread(vd_fname)
-	vprint("Creating foreground detector")
-	fg_det = gen_bgsub_pixel_detector(vd[:100])
-	vprint("Starting tracker")
-	tracks = track_video(model_img,vd,fg_det)
-	vprint("Applying bounding boxes to tracks")
-	bbox_vd = bbox_from_tracks(model_img,vd,tracks)
-	vprint("Writing output to '{}'".format(out_fname))
-	skvideo.io.vwrite(out_fname,bbox_vd)
-	vprint("done!")
-
-if __name__ == '__main__':
-	if(len(sys.argv)!=4):
-		print sys.argv
-		print "Usage: python {} <input video> <model image> <output video>".format(sys.argv[0])
-	else:
-		main(sys.argv[1],sys.argv[2],sys.argv[3])
