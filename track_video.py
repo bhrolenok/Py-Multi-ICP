@@ -1,4 +1,4 @@
-track_video.py
+# track_video.py
 
 import skimage.io
 import skvideo.io
@@ -7,17 +7,17 @@ import cPickle
 import sys
 
 def main(vd_fname,model_fname,out_fname):
-	vprint("Loading model '{}'".format(model_fname))
+	micp.vprint("Loading model '{}'".format(model_fname))
 	model_img = skimage.io.imread(model_fname)
-	vprint("Loading video '{}'".format(vd_fname))
+	micp.vprint("Loading video '{}'".format(vd_fname))
 	vd = skvideo.io.vread(vd_fname)
-	vprint("Creating foreground detector")
+	micp.vprint("Creating foreground detector")
 	fg_det = micp.gen_bgsub_pixel_detector(vd[:100])
-	vprint("Starting tracker")
+	micp.vprint("Starting tracker")
 	tracks = micp.track_video(model_img,vd,fg_det)
-	vprint("Saving tracks to '{}'".format(out_fname))
+	micp.vprint("Saving tracks to '{}'".format(out_fname))
 	cPickle.dump(tracks,open(out_fname,'w'))
-	vprint("done!")
+	micp.vprint("done!")
 
 if __name__ == '__main__':
 	if(len(sys.argv)!=4):
