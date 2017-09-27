@@ -146,3 +146,22 @@ def bbox_from_tracks(bbox_vtx,vd,tracks,copy_frame=True):
 			rr,cc = skimage.draw.polygon_perimeter(tformed_bbox_vtx[:,0].flatten(),tformed_bbox_vtx[:,1].flatten(),shape=frame.shape,clip=True)
 			frame[rr,cc,:]=[255,0,0]
 	return vd
+
+def btf_from_tracks(tracks,btf_obj=None,framerate=30):
+	col_data = dict()
+	col_data['id'] = list()
+	col_data['ximage'] = list()
+	col_data['yimage'] = list()
+	col_data['timage'] = list()
+	col_data['timestamp'] = list()
+	for f_idx in range(len(tracks)):
+		timestamp = int(framerate*f_idx)
+		for t_id in tracks[f_idx].keys():
+			col_data['id'].append('{}'.format(t_id))
+			col_data['ximage'].append('{}'.format(tracks[f_idx][t_id][0]))
+			col_data['yimage'].append('{}'.format(tracks[f_idx][t_id][1]))
+			col_data['timage'].append('{}'.format(tracks[f_idx][t_id][2]))
+			col_data['timestamp'].append('{}'.format(timestamp))
+	if not(btf_obj is None):
+		btf_obj.column_data = col_data
+	return col_data
