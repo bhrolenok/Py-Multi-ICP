@@ -147,7 +147,7 @@ def bbox_from_tracks(bbox_vtx,vd,tracks,copy_frame=True):
 			frame[rr,cc,:]=[255,0,0]
 	return vd
 
-def btf_from_tracks(tracks,btf_obj=None,framerate=30):
+def btf_from_tracks(tracks,btf_obj=None,framerate=30.0):
 	col_data = dict()
 	col_data['id'] = list()
 	col_data['ximage'] = list()
@@ -155,7 +155,7 @@ def btf_from_tracks(tracks,btf_obj=None,framerate=30):
 	col_data['timage'] = list()
 	col_data['timestamp'] = list()
 	for f_idx in range(len(tracks)):
-		timestamp = int(framerate*f_idx)
+		timestamp = int(f_idx)
 		for t_id in tracks[f_idx].keys():
 			col_data['id'].append('{}'.format(t_id))
 			col_data['ximage'].append('{}'.format(tracks[f_idx][t_id][0]))
@@ -165,3 +165,6 @@ def btf_from_tracks(tracks,btf_obj=None,framerate=30):
 	if not(btf_obj is None):
 		btf_obj.column_data = col_data
 	return col_data
+
+def snip(tracks,time1,time2,framerate=30.0):
+	return tracks[int(time1*framerate):int(time2*framerate)]
