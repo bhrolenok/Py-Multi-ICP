@@ -147,7 +147,7 @@ def bbox_from_tracks(bbox_vtx,vd,tracks,copy_frame=True):
 			frame[rr,cc,:]=[255,0,0]
 	return vd
 
-def btf_from_tracks(tracks,btf_obj=None,framerate=30.0):
+def btf_from_tracks(tracks,btf_obj=None,framerate=30.0,CoM_x=0.0, CoM_y=0.0, CoM_theta=0.0):
 	col_data = dict()
 	col_data['id'] = list()
 	col_data['ximage'] = list()
@@ -157,10 +157,12 @@ def btf_from_tracks(tracks,btf_obj=None,framerate=30.0):
 	for f_idx in range(len(tracks)):
 		timestamp = int(f_idx)
 		for t_id in tracks[f_idx].keys():
+			tmp_tformed = tform_pts(numpy.array([[CoM_x,CoM_y,],]),tracks[f_idx][t_id])
+			ximage,yimage,timage = tmp_tformed[0,0], tmp_tformed[0,1], tracks[f_idx][t_id][2]+CoM_theta
 			col_data['id'].append('{}'.format(t_id))
-			col_data['ximage'].append('{}'.format(tracks[f_idx][t_id][0]))
-			col_data['yimage'].append('{}'.format(tracks[f_idx][t_id][1]))
-			col_data['timage'].append('{}'.format(tracks[f_idx][t_id][2]))
+			col_data['ximage'].append('{}'.format(ximage))
+			col_data['yimage'].append('{}'.format(yimage))
+			col_data['timage'].append('{}'.format(timage))
 			col_data['timestamp'].append('{}'.format(timestamp))
 	if not(btf_obj is None):
 		btf_obj.column_data = col_data
