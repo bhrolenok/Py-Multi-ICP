@@ -157,8 +157,9 @@ def btf_from_tracks(tracks,btf_obj=None,framerate=30.0,CoM_x=0.0, CoM_y=0.0, CoM
 	for f_idx in range(len(tracks)):
 		timestamp = int(f_idx)
 		for t_id in tracks[f_idx].keys():
-			tmp_tformed = tform_pts(numpy.array([[CoM_x,CoM_y,],]),tracks[f_idx][t_id])
-			ximage,yimage,timage = tmp_tformed[0,0], tmp_tformed[0,1], tracks[f_idx][t_id][2]+CoM_theta
+			# rows == y, cols == x?
+			tmp_tformed = tform_pts(numpy.array([[CoM_y,CoM_x,],]),tracks[f_idx][t_id])
+			ximage,yimage,timage = tmp_tformed[0,1], tmp_tformed[0,0], tracks[f_idx][t_id][2]+CoM_theta
 			col_data['id'].append('{}'.format(t_id))
 			col_data['ximage'].append('{}'.format(ximage))
 			col_data['yimage'].append('{}'.format(yimage))
